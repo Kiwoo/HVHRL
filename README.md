@@ -21,8 +21,20 @@ Big picture:
 Work Flow:
 
 (1) Pretrain each of composable policy and save policies as pkl files
-  : set reward and environments for each of composable actions.
-  
+  : set reward and environments for each of composable actions. 
+
+  by 2pm
+
 (2) Load pretrained policy from pkl file and test whether they run well.
+
+  by 3pm
+
 (3) Transition boundary learning: based on sampling and choose the best transition boundary to be used as supervised boundary learning.
-(4) Given 
+  : random sample from trajectory, roll-out first and second policy, choose best transition points, use states before best transition states as it belongs to first policy, and rest of it as it belongs to second policy.
+  : Use classification based method. <= This should be modified, but currently I cannot find any better method. There could be hint in policy gradient method and Deep Discovery of Option. But I don't know currently. Will find it.
+
+  by 7pm
+
+(4) Given the best transition boundary between two policies, optimize each policy with newly given reward function and some additive GAN loss to imitate each other near the boundary.
+
+  by 10pm
