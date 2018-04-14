@@ -19,7 +19,7 @@ from baselines.common.mpi_adam import MpiAdam
 from baselines.common.cg import cg
 from baselines.gail.statistics import stats
 
-def traj_segment_generator_composed(pi_task1, pi_task2, env, horizon, stochastic):
+def traj_segment_generator_composed(pi_task1, pi_task2, env, boundary_condition, stochastic):
     # Initialize state variables
     t = 0
     ac = env.action_space.sample()
@@ -32,17 +32,60 @@ def traj_segment_generator_composed(pi_task1, pi_task2, env, horizon, stochastic
     ep_rets = []
     ep_lens = []
 
+    ep_rets_task1 = []
+    ep_rets_task2 = []
+
+    ep_lens_task1 = []
+    ep_lens_task2 = []
+
+
     # Initialize history arrays
-    obs = np.array([ob for _ in range(horizon)])
-    rews = np.zeros(horizon, 'float32')
-    vpreds = np.zeros(horizon, 'float32')
-    news = np.zeros(horizon, 'int32')
-    acs = np.array([ac for _ in range(horizon)])
-    prevacs = acs.copy()
+    obs_task1 = np.array([ob for _ in range(horizon)])
+    rews_task1 = np.zeros(horizon, 'float32')
+    vpreds_task1 = np.zeros(horizon, 'float32')
+    news_task1 = np.zeros(horizon, 'int32')
+    acs_task1 = np.array([ac for _ in range(horizon)])
+    prevacs_task1 = acs_task1.copy()
+
+    # Initialize history arrays
+    obs_task2 = np.array([ob for _ in range(horizon)])
+    rews_task2 = np.zeros(horizon, 'float32')
+    vpreds_task2 = np.zeros(horizon, 'float32')
+    news_task2 = np.zeros(horizon, 'int32')
+    acs_task2 = np.array([ac for _ in range(horizon)])
+    prevacs_task2 = acs_task2.copy()
+
+
+
+    policy_list = {"task1": pi_task1, "task2":, pi_task2}
+    cur_policy = 
+    pi_task = pi_task1
+    obs =  obs_task1
+    rews = rews_task1
+    vpred = vpreds_task1
+    news = news_task1
+    acs = acs_task1
+    prevacs = prevacs_task1
+    ep_rets = ep_rets_task1
+    ep_lens = ep_lens_task1
 
     while True:
         prevac = ac
-        ac, vpred = pi.act(stochastic, ob)
+        # If boundary condition meet, then we change our current policy to next one and regard it as different trajectory.
+        if boundary_condition(ob) == True:
+            pi_task = pi_task2
+            obs =  obs_task2
+            rews = rews_task2
+            vpred = vpreds_task2
+            news = news_task2
+            acs = acs_task2
+            prevacs = prevacs_task2
+            ep_rets = ep_rets_task2
+            ep_lens = ep_lens_task2
+            cur_ep_ret = 0
+            cur_ep_len = 0
+
+        ac, vpred = pi_task.act(stochastic, ob)
         # Slight weirdness here because we need value function at time T
         # before returning segment [0, T-1] so we get the correct
         # terminal value
@@ -73,6 +116,17 @@ def traj_segment_generator_composed(pi_task1, pi_task2, env, horizon, stochastic
             cur_ep_ret = 0
             cur_ep_len = 0
             ob = env.reset()
+
+            pi_task = pi_task1
+            obs =  obs_task1
+            rews = rews_task1
+            vpred = vpreds_task1
+            news = news_task1
+            acs = acs_task1
+            prevacs = prevacs_task1
+            ep_rets = ep_rets_task1
+            ep_lens = ep_lens_task1
+
         t += 1
 
 def traj_segment_generator(pi, env, horizon, stochastic):
@@ -315,7 +369,7 @@ def hybrid_learn(env, policy_func, reward_giver, rank,
 
     # Prepare for rollouts
     # ----------------------------------------
-    seg_gen = traj_segment_generator_composed(pi_task1, pi_task2, env, reward_giver, timesteps_per_batch, stochastic=True)
+    seg_gen = traj_segment_generator_composed(pi_task1, pi_task2, env, boundary_condition, timesteps_per_batch, stochastic=True)
 
     episodes_so_far = 0
     timesteps_so_far = 0
