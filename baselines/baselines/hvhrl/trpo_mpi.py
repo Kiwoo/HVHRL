@@ -90,10 +90,18 @@ def traj_segment_generator_composed(pi_task1, pi_task2, env, boundary_condition,
         # before returning segment [0, T-1] so we get the correct
         # terminal value
         if t > 0 and t % horizon == 0:
-            yield {"ob" : obs, "rew" : rews, "vpred" : vpreds, "new" : news,
-                    "ac" : acs, "prevac" : prevacs, "nextvpred": vpred * (1 - new),
-                    "ep_rets" : ep_rets, "ep_lens" : ep_lens}
-            _, vpred = pi.act(stochastic, ob)
+            yield {"ob_task1" : obs_task1, "ob_task2" : obs_task2, 
+                    "rew_task1" : rews_task1, "rew_task2" : rews_task2, 
+                    "vpred_task1" : vpreds_task1, "vpred_task2" : vpreds_task2, 
+                    "new_task1" : news_task1, "new_task2" : news_task2, 
+                    "ac_task1" : acs_task1, "ac_task2" : acs_task2, 
+                    "prevac_task1" : prevacs_task1, "prevac_task2" : prevacs_task2,
+                    "nextvpred_task1": vpreds_task1 * (1 - new_task1), "nextvpred_task2": vpred_task2 * (1 - new_task2),
+                    "ep_rets_task1" : ep_rets_task1, "ep_rets_task2" : ep_rets_task2,   
+                    "ep_lens_task1" : ep_lens_task1, "ep_lens_task2" : ep_lens_task2}
+            _, vpred_task2 = pi.act(stochastic, ob)
+            # assume that the policy made transition at least once so it ends at policy 2
+            
             # Be careful!!! if you change the downstream algorithm to aggregate
             # several of these batches, then be sure to do a deepcopy
             ep_rets = []
