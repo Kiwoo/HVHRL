@@ -11,12 +11,12 @@ def callback(lcl, _glb):
 
 def main():
     env = gym.make("Pendulum-v0")
-    model = deepq.models.mlp([64])
+    model = deepq.models.mlp([256,256])
     act = deepq.learn(
         env,
         q_func=model,
-        lr=1e-3,
-        max_timesteps=100000,
+        lr=1e-4,
+        max_timesteps=400000,
         buffer_size=50000,
         exploration_fraction=0.1,
         exploration_final_eps=0.02,

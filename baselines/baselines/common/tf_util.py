@@ -198,6 +198,26 @@ class _Function(object):
 # Flat vectors
 # ================================================================
 
+def load_state(fname):
+    saver = tf.train.Saver()
+    saver.restore(tf.get_default_session(), fname)
+
+def save_state(fname):
+    os.makedirs(os.path.dirname(fname), exist_ok=True)
+    saver = tf.train.Saver()
+    saver.save(tf.get_default_session(), fname)
+
+class saver(object):
+    def __init__(self, max_to_keep):
+        self._saver = tf.train.Saver(tf.global_variables(), max_to_keep=max_to_keep)
+
+    def _restore(self, weight_file):
+        self._saver.restore(tf.get_default_session(), weight_file)
+
+    def _save(self, ckpt_file, step):
+        self._saver.save(tf.get_default_session(), ckpt_file, global_step=step)
+
+
 def var_shape(x):
     out = x.get_shape().as_list()
     assert all(isinstance(a, int) for a in out), \

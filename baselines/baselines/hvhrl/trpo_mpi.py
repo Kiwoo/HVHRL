@@ -1,16 +1,24 @@
-from baselines.common import explained_variance, zipsame, dataset
-from baselines import logger
-import baselines.common.tf_util as U
-import tensorflow as tf, numpy as np
+'''
+Disclaimer: The trpo part highly rely on trpo_mpi at @openai/baselines
+'''
+
 import time
-from baselines.common import colorize
+import os
+from contextlib import contextmanager
 from mpi4py import MPI
 from collections import deque
+
+import tensorflow as tf
+import numpy as np
+
+import baselines.common.tf_util as U
+from baselines.common import explained_variance, zipsame, dataset, fmt_row
+from baselines import logger
+from baselines.common import colorize
 from baselines.common.mpi_adam import MpiAdam
 from baselines.common.cg import cg
-from contextlib import contextmanager
-import datetime
-import os
+from baselines.gail.statistics import stats
+
 
 def traj_segment_generator(pi, env, horizon, stochastic):
     # Initialize state variables
@@ -68,6 +76,8 @@ def traj_segment_generator(pi, env, horizon, stochastic):
             ob = env.reset()
         t += 1
 
+
+
 def add_vtarg_and_adv(seg, gamma, lam):
     new = np.append(seg["new"], 0) # last element is only used for last vtarg, but we already zeroed it if last new = 1
     vpred = np.append(seg["vpred"], seg["nextvpred"])
@@ -81,20 +91,20 @@ def add_vtarg_and_adv(seg, gamma, lam):
         gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
-def learn(env, policy_fn, *,
-        timesteps_per_batch, # what to train on
-        max_kl, cg_iters,
-        gamma, lam, # advantage estimation
-        entcoeff=0.0,
-        cg_damping=1e-2,
-        vf_stepsize=3e-4,
-        vf_iters =3,
-        max_timesteps=0, max_episodes=0, max_iters=0,  # time constraint
-        callback=None
-        ):
+def hybrid_learn():
+    print("hybrid learn here!")
+    return
 
-    ckpt_dir = "../ckpt/"
-    ckpt_file = os.path.join(ckpt_dir, 'weight')
+def policy_learn(env, policy_func, rank,
+          *,
+          entcoeff, save_per_iter,
+          ckpt_dir, log_dir, timesteps_per_batch, task_name,
+          gamma, lam,
+          max_kl, cg_iters, cg_damping=1e-2,
+          vf_stepsize=3e-4, vf_iters=3,
+          max_timesteps=0, max_episodes=0, max_iters=0,
+          callback=None
+          ):
 
     nworkers = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
@@ -103,10 +113,10 @@ def learn(env, policy_fn, *,
     # ----------------------------------------
     ob_space = env.observation_space
     ac_space = env.action_space
-    pi = policy_fn("pi", ob_space, ac_space)
-    oldpi = policy_fn("oldpi", ob_space, ac_space)
-    atarg = tf.placeholder(dtype=tf.float32, shape=[None]) # Target advantage function (if applicable)
-    ret = tf.placeholder(dtype=tf.float32, shape=[None]) # Empirical return
+    pi = policy_func("pi", ob_space, ac_space)
+    oldpi = policy_func("oldpi", ob_space, ac_space)
+    atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
+    ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
     ob = U.get_placeholder_cached(name="ob")
     ac = pi.pdtype.sample_placeholder([None])
@@ -119,7 +129,7 @@ def learn(env, policy_fn, *,
 
     vferr = tf.reduce_mean(tf.square(pi.vpred - ret))
 
-    ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac)) # advantage * pnew / pold
+    ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac))  # advantage * pnew / pold
     surrgain = tf.reduce_mean(ratio * atarg)
 
     optimgain = surrgain + entbonus
@@ -129,8 +139,10 @@ def learn(env, policy_fn, *,
     dist = meankl
 
     all_var_list = pi.get_trainable_variables()
-    var_list = [v for v in all_var_list if v.name.split("/")[1].startswith("pol")]
-    vf_var_list = [v for v in all_var_list if v.name.split("/")[1].startswith("vf")]
+    var_list = [v for v in all_var_list if v.name.startswith("pi/pol") or v.name.startswith("pi/logstd")]
+    vf_var_list = [v for v in all_var_list if v.name.startswith("pi/vff")]
+    assert len(var_list) == len(vf_var_list) + 1
+    # d_adam = MpiAdam(reward_giver.get_trainable_variables())
     vfadam = MpiAdam(vf_var_list)
 
     get_flat = U.GetFlat(var_list)
@@ -144,11 +156,11 @@ def learn(env, policy_fn, *,
         sz = U.intprod(shape)
         tangents.append(tf.reshape(flat_tangent[start:start+sz], shape))
         start += sz
-    gvp = tf.add_n([tf.reduce_sum(g*tangent) for (g, tangent) in zipsame(klgrads, tangents)]) #pylint: disable=E1111
+    gvp = tf.add_n([tf.reduce_sum(g*tangent) for (g, tangent) in zipsame(klgrads, tangents)])  # pylint: disable=E1111
     fvp = U.flatgrad(gvp, var_list)
 
-    assign_old_eq_new = U.function([],[], updates=[tf.assign(oldv, newv)
-        for (oldv, newv) in zipsame(oldpi.get_variables(), pi.get_variables())])
+    assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
+                                                    for (oldv, newv) in zipsame(oldpi.get_variables(), pi.get_variables())])
     compute_losses = U.function([ob, ac, atarg], losses)
     compute_lossandgrad = U.function([ob, ac, atarg], losses + [U.flatgrad(optimgain, var_list)])
     compute_fvp = U.function([flat_tangent, ob, ac, atarg], fvp)
@@ -160,7 +172,7 @@ def learn(env, policy_fn, *,
             print(colorize(msg, color='magenta'))
             tstart = time.time()
             yield
-            print(colorize("done in %.3f seconds"%(time.time() - tstart), color='magenta'))
+            print(colorize("done in %.3f seconds" % (time.time() - tstart), color='magenta'))
         else:
             yield
 
@@ -171,25 +183,14 @@ def learn(env, policy_fn, *,
         out /= nworkers
         return out
 
-
-    saver = U.saver(max_to_keep = 5)
-
-
     U.initialize()
-
-    # ckpt_dir = os.path.join(ckpt_dir, cfg.cfg_name)
-    weight_file = tf.train.latest_checkpoint(ckpt_dir)
-    if weight_file is not None:
-        saver._restore(weight_file)
-        tf.logging.info('%s loaded' % weight_file)
-    else:
-        tf.logging.info('Training from the scratch (no pre-trained weight_filets)..')
-
     th_init = get_flat()
     MPI.COMM_WORLD.Bcast(th_init, root=0)
     set_from_flat(th_init)
+    # d_adam.sync()
     vfadam.sync()
-    print("Init param sum", th_init.sum(), flush=True)
+    if rank == 0:
+        print("Init param sum", th_init.sum(), flush=True)
 
     # Prepare for rollouts
     # ----------------------------------------
@@ -199,10 +200,27 @@ def learn(env, policy_fn, *,
     timesteps_so_far = 0
     iters_so_far = 0
     tstart = time.time()
-    lenbuffer = deque(maxlen=40) # rolling buffer for episode lengths
-    rewbuffer = deque(maxlen=40) # rolling buffer for episode rewards
+    lenbuffer = deque(maxlen=40)  # rolling buffer for episode lengths
+    rewbuffer = deque(maxlen=40)  # rolling buffer for episode rewards
+    true_rewbuffer = deque(maxlen=40)
 
-    assert sum([max_iters>0, max_timesteps>0, max_episodes>0])==1
+    assert sum([max_iters > 0, max_timesteps > 0, max_episodes > 0]) == 1
+
+    # g_loss_stats = stats(loss_names)
+    # d_loss_stats = stats(reward_giver.loss_name)
+    # ep_stats = stats(["True_rewards", "Rewards", "Episode_length"])
+    # if provide pretrained weight
+
+    fname = os.path.join(ckpt_dir, task_name)
+    weight_file = tf.train.latest_checkpoint(ckpt_dir)
+
+    print("fname: {} weight_file: {}".format(fname, weight_file))
+    if weight_file is not None:
+        U.load_state(weight_file)#, var_list=pi.get_variables())
+        tf.logging.info('%s loaded' % weight_file)
+    else:
+        print("from scratch")
+        tf.logging.info('Training from the scratch (no pre-trained weight_filets)..')
 
     while True:
         if callback: callback(locals(), globals())
@@ -212,6 +230,16 @@ def learn(env, policy_fn, *,
             break
         elif max_iters and iters_so_far >= max_iters:
             break
+
+        # Save model
+        if rank == 0 and iters_so_far % save_per_iter == 0 and ckpt_dir is not None:
+            fname = os.path.join(ckpt_dir, task_name)
+            os.makedirs(os.path.dirname(fname), exist_ok=True)
+            saver = tf.train.Saver()
+            saver.save(tf.get_default_session(), fname)
+
+            print("============= SAVE ===============")
+
         logger.log("********** Iteration %i ************"%iters_so_far)
 
         with timed("sampling"):
@@ -306,10 +334,7 @@ def learn(env, policy_fn, *,
         if rank==0:
             logger.dump_tabular()
 
-        if iters_so_far % 10 == 0:
-            print('{} Saving checkpoint file to: {}'.format(
-                datetime.datetime.now().strftime('%m/%d %H:%M:%S'), ckpt_dir))
-            saver._save(ckpt_file, step=iters_so_far)
+
 
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]
