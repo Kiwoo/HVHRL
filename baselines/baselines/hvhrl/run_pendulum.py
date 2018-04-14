@@ -141,6 +141,24 @@ def train(env, seed, policy_fn, algo,
                        gamma=0.99, lam=0.98,
                        vf_iters=5, vf_stepsize=1e-3,
                        task_name=task_name)
+    elif algo == 'hvhrl':
+        # Set up for MPI seed
+        rank = MPI.COMM_WORLD.Get_rank()
+        if rank != 0:
+            logger.set_level(logger.DISABLED)
+        workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
+        set_global_seeds(workerseed)
+        env.seed(workerseed)
+        trpo_mpi.policy_learn(env, policy_fn, rank,
+                       entcoeff=policy_entcoeff,
+                       max_timesteps=num_timesteps,
+                       ckpt_dir=checkpoint_dir, log_dir=log_dir,
+                       save_per_iter=save_per_iter,
+                       timesteps_per_batch=1024,
+                       max_kl=0.01, cg_iters=10, cg_damping=0.1,
+                       gamma=0.99, lam=0.98,
+                       vf_iters=5, vf_stepsize=1e-3,
+                       task_name=task_name)      
     else:
         raise NotImplementedError
 
@@ -167,7 +185,7 @@ def policy_run(env, policy_fn, load_model_path, number_rollouts,
       cur_ep_ret = 0
       while not done:
         env.render()
-        time.sleep(0.01)
+        time.sleep(0.1)
         ac, vpred = pi.act(stochastic_policy, ob)
         ob, rew, done, _ = env.step(ac)
         cur_ep_ret += rew
