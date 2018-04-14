@@ -23,11 +23,11 @@ Work Flow:
 (1) Pretrain each of composable policy and save policies as pkl files
   : set reward and environments for each of composable actions. 
 
-  by 2pm
+  Done.
 
 (2) Load pretrained policy from pkl file and test whether they run well.
 
-  by 3pm
+  Done.
 
 (3) Transition boundary learning: based on sampling and choose the best transition boundary to be used as supervised boundary learning.
   : random sample from trajectory, roll-out first and second policy, choose best transition points, use states before best transition states as it belongs to first policy, and rest of it as it belongs to second policy.
