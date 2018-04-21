@@ -1,4 +1,13 @@
-## If you are curious.
+
+
+Project Name:
+
+Optimal Guard Seeking for Hybrid System
+
+[1] Train each policy
+[2] Load trained policies
+[3] For new reward function, for example if you have new goal, then by adjusting guard, you can easily adapt to new policy.
+
 
 ##### Train a Cartpole agent and watch it play once it converges!
 

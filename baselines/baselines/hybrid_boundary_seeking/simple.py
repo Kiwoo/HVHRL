@@ -79,6 +79,7 @@ def load(path):
 
 def learn(env,
           q_func,
+          subpolicies,
           lr=5e-4,
           max_timesteps=100000,
           buffer_size=50000,
