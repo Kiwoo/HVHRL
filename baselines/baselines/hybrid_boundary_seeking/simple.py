@@ -79,7 +79,7 @@ def load(path):
 
 def learn(env,
           q_func,
-          subpolicies,
+          sub_policies,
           lr=5e-4,
           max_timesteps=100000,
           buffer_size=50000,
@@ -115,6 +115,7 @@ def learn(env,
             reuse: bool
                 should be passed to outer variable scope
         and returns a tensor of shape (batch_size, num_actions) with values of every action.
+    sub_policies: list of sub_policies that will be composed for a new objective.
     lr: float
         learning rate for adam optimizer
     max_timesteps: int
@@ -172,28 +173,37 @@ def learn(env,
     # capture the shape outside the closure so that the env object is not serialized
     # by cloudpickle when serializing make_obs_ph
     observation_space_shape = env.observation_space.shape
+
+    # Now number of action is number of subpolicies to be used.
+    n_sub_policies = len(sub_policies)
+
     def make_obs_ph(name):
         return BatchInput(observation_space_shape, name=name)
 
-    print("action number: {}".format(env.action_space.n))
+    print("sub policies number: {}".format(n_sub_policies))
 
-    act, train, update_target, debug = deepq.build_train(
+
+
+    # Here we try to find master_policy(: in other words, switch or boundary condition or ..) 
+    # to control which sub-policy to be used at given states.
+
+    master_policy, train, update_target, debug = deepq.build_train(
         make_obs_ph=make_obs_ph,
         q_func=q_func,
-        num_actions=env.action_space.n,
+        num_actions=n_sub_policies,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
         grad_norm_clipping=10,
         param_noise=param_noise
     )
 
-    act_params = {
+    master_policy_params = {
         'make_obs_ph': make_obs_ph,
         'q_func': q_func,
-        'num_actions': env.action_space.n,
+        'num_actions': n_sub_policies,
     }
 
-    act = ActWrapper(act, act_params)
+    master_policy = ActWrapper(master_policy, master_policy_params)
 
     # Create the replay buffer
     if prioritized_replay:
@@ -218,6 +228,14 @@ def learn(env,
     episode_rewards = [0.0]
     saved_mean_reward = None
     obs = env.reset()
+
+    # To be simple, we assume that we start with the first sub_policy.
+    # We can modify this to more general, start from random sub_policy.
+    # But for now, we fix initial subpolicy as 0.
+    sub_policy_idx = 0
+
+
+
     reset = True
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
@@ -241,17 +259,22 @@ def learn(env,
                 kwargs['reset'] = reset
                 kwargs['update_param_noise_threshold'] = update_param_noise_threshold
                 kwargs['update_param_noise_scale'] = True
-            action = act(np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
+            # We follow current sub_policy_idx.
+                
+            action = sub_policies[sub_policy_idx](np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
             env_action = action
             reset = False
             new_obs, rew, done, _ = env.step(env_action)
+            new_sub_policy_idx = master_policy(np.array(new_obs)[None], update_eps=update_eps, **kwargs)[0]
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, action, rew, new_obs, float(done))
+            replay_buffer.add(obs, action, rew, new_obs, float(done), new_sub_policy_idx)
             obs = new_obs
+            sub_policy_idx = new_sub_policy_idx
 
             episode_rewards[-1] += rew
             if done:
                 obs = env.reset()
+                sub_policy_idx = 0
                 episode_rewards.append(0.0)
                 reset = True
 

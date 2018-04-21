@@ -25,16 +25,16 @@ def main():
     we assume that we have actor_list, which is a list of pre-trained policies 
     to be used as subpolicies
     '''
-    subpolicies = []
+    sub_policies = []
     for actor in actor_list:
         actor = HBS.load("{}.pkl".format(actor))
-        subpolicies.append(actor)
+        sub_policies.append(actor)
 
-    guard_model = deepq.models.mlp([256,256])
-    guard_act = deepq.learn(
+    boundary_model = deepq.models.mlp([256,256])
+    boundary_act = deepq.learn(
         env,
         q_func=model,
-        subpolicies=subpolicies,
+        sub_policies=sub_policies,
         lr=1e-4,
         max_timesteps=400000,
         buffer_size=50000,
@@ -44,7 +44,7 @@ def main():
         callback=callback
     )
     print("Saving model to pendulum_model.pkl")
-    guard_act.save("pendulum_model.pkl")
+    boundary_act.save("pendulum_boundary_model.pkl")
 
 
 if __name__ == '__main__':
