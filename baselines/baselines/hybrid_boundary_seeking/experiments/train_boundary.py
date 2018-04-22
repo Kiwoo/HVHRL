@@ -1,6 +1,6 @@
 import gym
 
-from baselines import hybrid_boundary_seeking as deepq
+from baselines import hybrid_boundary_seeking as HBS
 
 
 '''
@@ -30,8 +30,8 @@ def main():
         actor = HBS.load("{}.pkl".format(actor))
         sub_policies.append(actor)
 
-    boundary_model = deepq.models.mlp([256,256])
-    boundary_act = deepq.learn(
+    boundary_model = HBS.models.mlp([256,256])
+    boundary_act = HBS.learn(
         env,
         q_func=model,
         sub_policies=sub_policies,

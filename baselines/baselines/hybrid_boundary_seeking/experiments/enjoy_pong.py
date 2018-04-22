@@ -1,11 +1,11 @@
 import gym
-from baselines import deepq
+from baselines import hybrid_boundary_seeking as HBS
 
 
 def main():
     env = gym.make("PongNoFrameskip-v4")
-    env = deepq.wrap_atari_dqn(env)
-    act = deepq.load("pong_model.pkl")
+    env = HBS.wrap_atari_dqn(env)
+    act = HBS.load("pong_model.pkl")
 
     while True:
         obs, done = env.reset(), False

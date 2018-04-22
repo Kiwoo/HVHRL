@@ -1,4 +1,4 @@
-from baselines import deepq
+from baselines import hybrid_boundary_seeking as HBS
 from baselines.common import set_global_seeds
 from baselines import bench
 import argparse
@@ -17,13 +17,13 @@ def main():
     set_global_seeds(args.seed)
     env = make_atari(args.env)
     env = bench.Monitor(env, logger.get_dir())
-    env = deepq.wrap_atari_dqn(env)
-    model = deepq.models.cnn_to_mlp(
+    env = HBS.wrap_atari_dqn(env)
+    model = HBS.models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
         hiddens=[256],
         dueling=bool(args.dueling),
     )
-    act = deepq.learn(
+    act = HBS.learn(
         env,
         q_func=model,
         lr=1e-4,

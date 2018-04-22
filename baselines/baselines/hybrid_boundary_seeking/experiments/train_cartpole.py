@@ -1,6 +1,7 @@
 import gym
 
-from baselines import deepq
+import baselines
+from baselines import hybrid_boundary_seeking as HBS
 
 
 def callback(lcl, _glb):
@@ -11,8 +12,8 @@ def callback(lcl, _glb):
 
 def main():
     env = gym.make("Pendulum-v0")
-    model = deepq.models.mlp([256,256])
-    act = deepq.learn(
+    model = HBS.models.mlp([256,256])
+    act = HBS.learn(
         env,
         q_func=model,
         lr=1e-4,

@@ -267,7 +267,8 @@ def learn(env,
             new_obs, rew, done, _ = env.step(env_action)
             new_sub_policy_idx = master_policy(np.array(new_obs)[None], update_eps=update_eps, **kwargs)[0]
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, action, rew, new_obs, float(done), new_sub_policy_idx)
+            replay_buffer.add(obs, new_sub_policy_idx, rew, new_obs, float(done))
+            # now new_sub_policy_idx means action
             obs = new_obs
             sub_policy_idx = new_sub_policy_idx
 

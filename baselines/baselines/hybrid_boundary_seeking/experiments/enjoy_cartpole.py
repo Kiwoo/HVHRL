@@ -1,11 +1,11 @@
 import gym
 import time
-from baselines import deepq
+from baselines import hybrid_boundary_seeking as HBS
 
 
 def main():
     env = gym.make("Pendulum-v0")
-    act = deepq.load("cartpole_model.pkl")
+    act = HBS.load("cartpole_model.pkl")
 
     while True:
         obs, done = env.reset(), False

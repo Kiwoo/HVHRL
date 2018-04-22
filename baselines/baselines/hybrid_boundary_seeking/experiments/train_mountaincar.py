@@ -1,13 +1,13 @@
 import gym
 
-from baselines import deepq
+from baselines import hybrid_boundary_seeking as HBS
 
 
 def main():
     env = gym.make("MountainCar-v0")
     # Enabling layer_norm here is import for parameter space noise!
-    model = deepq.models.mlp([64], layer_norm=True)
-    act = deepq.learn(
+    model = HBS.models.mlp([64], layer_norm=True)
+    act = HBS.learn(
         env,
         q_func=model,
         lr=1e-3,

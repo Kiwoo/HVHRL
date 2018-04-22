@@ -101,7 +101,7 @@ def traj_segment_generator_composed(pi_task1, pi_task2, env, boundary_condition,
                     "ep_lens_task1" : ep_lens_task1, "ep_lens_task2" : ep_lens_task2}
             _, vpred_task2 = pi.act(stochastic, ob)
             # assume that the policy made transition at least once so it ends at policy 2
-            
+
             # Be careful!!! if you change the downstream algorithm to aggregate
             # several of these batches, then be sure to do a deepcopy
             ep_rets = []
@@ -239,8 +239,11 @@ def hybrid_learn(env, policy_func, reward_giver, rank,
     atarg_task2 = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
     ret_task2 = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
-    ob = U.get_placeholder_cached(name="ob")
-    ac = pi.pdtype.sample_placeholder([None])
+    ob_task1 = U.get_placeholder_cached(name="ob_task1")
+    ac_task1 = pi_task1.pdtype.sample_placeholder([None])
+
+    ob_task2 = U.get_placeholder_cached(name="ob_task2")
+    ac_task2 = pi_task2.pdtype.sample_placeholder([None])
 
     kloldnew_task1 = oldpi_task1.pd.kl(pi_task1.pd)
     ent_task1 = pi_task1.pd.entropy()
@@ -264,7 +267,7 @@ def hybrid_learn(env, policy_func, reward_giver, rank,
     surrgain_task1 = tf.reduce_mean(ratio_task1 * atarg_task1)
     surrgain_task2 = tf.reduce_mean(ratio_task2 * atarg_task2)
 
-    optimgain_task1= surrgain_task1 + entbonus_task1
+    optimgain_task1 = surrgain_task1 + entbonus_task1
     optimgain_task2 = surrgain_task2 + entbonus_task2
 
     optimgain = optimgain_task1 + optimgain_task2
@@ -332,6 +335,11 @@ def hybrid_learn(env, policy_func, reward_giver, rank,
 
     assign_old_eq_new_task1 = U.function([], [], updates=[tf.assign(oldv, newv)
                                                     for (oldv, newv) in zipsame(oldpi_task1.get_variables(), pi_task1.get_variables())])
+
+    assign_old_eq_new_task2 = U.function([], [], updates=[tf.assign(oldv, newv)
+                                                    for (oldv, newv) in zipsame(oldpi_task2.get_variables(), pi_task2.get_variables())])
+
+
     compute_losses_task1 = U.function([ob, ac, atarg_task1], losses_task1)
     compute_lossandgrad_task1 = U.function([ob, ac, atarg_task1], losses_task1 + [U.flatgrad(optimgain_task1, var_list_task1)])
     compute_fvp_task1 = U.function([flat_tangent_task1, ob, ac, atarg_task1], fvp_task1)
@@ -435,16 +443,24 @@ def hybrid_learn(env, policy_func, reward_giver, rank,
                 seg = seg_gen.__next__()
             add_vtarg_and_adv(seg, gamma, lam)
             # ob, ac, atarg, ret, td1ret = map(np.concatenate, (obs, acs, atargs, rets, td1rets))
-            ob, ac, atarg, tdlamret = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"]
-            vpredbefore = seg["vpred"]  # predicted value function before udpate
-            atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
+            ob_task1, ac_task1, atarg_task1, tdlamret_task1 = seg["ob_task1"], seg["ac_task1"], seg["adv_task1"], seg["tdlamret_task1"]
+            ob_task2, ac_task2, atarg_task2, tdlamret_task2 = seg["ob_task2"], seg["ac_task2"], seg["adv_task2"], seg["tdlamret_task2"]
+            vpredbefore_task1 = seg["vpred_task1"]  # predicted value function before udpate
+            vpredbefore_task2 = seg["vpred_task2"]  # predicted value function before udpate
+            atarg_task1 = (atarg_task1 - atarg_task1.mean()) / atarg_task1.std()  # standardized advantage function estimate
+            atarg_task2 = (atarg_task2 - atarg_task2.mean()) / atarg_task2.std()  # standardized advantage function estimate
 
-            if hasattr(pi, "ob_rms"): pi.ob_rms.update(ob)  # update running mean/std for policy
+            if hasattr(pi_task1, "ob_rms_task1"): pi_task1.ob_rms.update(ob_task1)  # update running mean/std for policy
+            if hasattr(pi_task2, "ob_rms_task2"): pi_task2.ob_rms.update(ob_task2)  # update running mean/std for policy
 
-            args = seg["ob"], seg["ac"], atarg
-            fvpargs = [arr[::5] for arr in args]
+            args_task1 = seg["ob_task1"], seg["ac_task1"], atarg_task1
+            fvpargs_task1 = [arr[::5] for arr in args_task1]
 
-            assign_old_eq_new()  # set old parameter values to new parameter values
+            args_task2 = seg["ob_task2"], seg["ac_task2"], atarg_task2
+            fvpargs_task2 = [arr[::5] for arr in args_task2]
+
+            assign_old_eq_new_task1()  # set old parameter values to new parameter values
+            assign_old_eq_new_task2()  # set old parameter values to new parameter values
             with timed("computegrad"):
                 *lossbefore, g = compute_lossandgrad(*args)
             lossbefore = allmean(np.array(lossbefore))
