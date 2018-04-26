@@ -25,15 +25,20 @@ def main():
     we assume that we have actor_list, which is a list of pre-trained policies 
     to be used as subpolicies
     '''
+
+    exp_name = 'boundary'
+
+    actor_list = ["half_down", "half_up"]
     sub_policies = []
     for actor in actor_list:
-        actor = HBS.load("{}.pkl".format(actor))
+        print("=== Actor: {}".format(actor))
+        actor = HBS.load("pendulum_model_{}.pkl".format(actor), actor)
         sub_policies.append(actor)
 
     boundary_model = HBS.models.mlp([256,256])
     boundary_act = HBS.learn(
         env,
-        q_func=model,
+        q_func=boundary_model,
         sub_policies=sub_policies,
         lr=1e-4,
         max_timesteps=400000,
@@ -41,10 +46,11 @@ def main():
         exploration_fraction=0.1,
         exploration_final_eps=0.02,
         print_freq=10,
+        exp_name = exp_name,
         callback=callback
     )
     print("Saving model to pendulum_model.pkl")
-    boundary_act.save("pendulum_boundary_model.pkl")
+    boundary_act.save("pendulum_model_{}.pkl".format(exp_name))
 
 
 if __name__ == '__main__':

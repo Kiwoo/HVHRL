@@ -10,9 +10,9 @@ import gym
 import baselines.common.tf_util as U
 from baselines import logger
 from baselines.common.schedules import LinearSchedule
-from baselines import deepq
-from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from baselines.deepq.utils import BatchInput, load_state, save_state
+from baselines import hybrid_boundary_seeking as HBS
+from baselines.hybrid_boundary_seeking.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from baselines.hybrid_boundary_seeking.utils import BatchInput, load_state, save_state
 
 
 class ActWrapper(object):
@@ -21,10 +21,10 @@ class ActWrapper(object):
         self._act_params = act_params
 
     @staticmethod
-    def load(path):
+    def load(path, exp_name):
         with open(path, "rb") as f:
             model_data, act_params = cloudpickle.load(f)
-        act = deepq.build_act(**act_params)
+        act = HBS.build_act(**act_params, scope=exp_name)
         sess = tf.Session()
         sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
@@ -33,7 +33,7 @@ class ActWrapper(object):
                 f.write(model_data)
 
             zipfile.ZipFile(arc_path, 'r', zipfile.ZIP_DEFLATED).extractall(td)
-            load_state(os.path.join(td, "model"))
+            load_state(os.path.join(td, "model"), exp_name)
 
         return ActWrapper(act, act_params)
 
@@ -60,7 +60,7 @@ class ActWrapper(object):
             cloudpickle.dump((model_data, self._act_params), f)
 
 
-def load(path):
+def load(path, exp_name):
     """Load act function that was returned by learn function.
 
     Parameters
@@ -74,7 +74,7 @@ def load(path):
         function that takes a batch of observations
         and returns actions.
     """
-    return ActWrapper.load(path)
+    return ActWrapper.load(path, exp_name)
 
 
 def learn(env,
@@ -98,6 +98,7 @@ def learn(env,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
           param_noise=False,
+          exp_name = None,
           callback=None):
     """Train a deepq model.
 
@@ -187,13 +188,14 @@ def learn(env,
     # Here we try to find master_policy(: in other words, switch or boundary condition or ..) 
     # to control which sub-policy to be used at given states.
 
-    master_policy, train, update_target, debug = deepq.build_train(
+    master_policy, train, update_target, debug = HBS.build_train(
         make_obs_ph=make_obs_ph,
         q_func=q_func,
         num_actions=n_sub_policies,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
         grad_norm_clipping=10,
+        scope=exp_name,
         param_noise=param_noise
     )
 
@@ -232,7 +234,9 @@ def learn(env,
     # To be simple, we assume that we start with the first sub_policy.
     # We can modify this to more general, start from random sub_policy.
     # But for now, we fix initial subpolicy as 0.
-    sub_policy_idx = 0
+    # sub_policy_idx = 0
+
+    sub_policy_idx = np.random.choice(range(n_sub_policies))
 
 
 
@@ -261,13 +265,14 @@ def learn(env,
                 kwargs['update_param_noise_scale'] = True
             # We follow current sub_policy_idx.
                 
-            action = sub_policies[sub_policy_idx](np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
+            # action = sub_policies[sub_policy_idx](np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
+            action = sub_policies[sub_policy_idx](np.array(obs)[None])[0]
             env_action = action
             reset = False
             new_obs, rew, done, _ = env.step(env_action)
             new_sub_policy_idx = master_policy(np.array(new_obs)[None], update_eps=update_eps, **kwargs)[0]
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, new_sub_policy_idx, rew, new_obs, float(done))
+            replay_buffer.add(obs, sub_policy_idx, rew, new_obs, float(done))
             # now new_sub_policy_idx means action
             obs = new_obs
             sub_policy_idx = new_sub_policy_idx
@@ -275,7 +280,7 @@ def learn(env,
             episode_rewards[-1] += rew
             if done:
                 obs = env.reset()
-                sub_policy_idx = 0
+                sub_policy_idx = np.random.choice(range(n_sub_policies))
                 episode_rewards.append(0.0)
                 reset = True
 

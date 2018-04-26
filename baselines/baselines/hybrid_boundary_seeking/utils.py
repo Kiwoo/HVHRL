@@ -6,8 +6,10 @@ import tensorflow as tf
 # Saving variables
 # ================================================================
 
-def load_state(fname):
-    saver = tf.train.Saver()
+def load_state(fname, scope):
+    all_vars = tf.all_variables()
+    model_scope_var = [k for k in all_vars if k.name.startswith(scope)]
+    saver = tf.train.Saver(model_scope_var)
     saver.restore(tf.get_default_session(), fname)
 
 def save_state(fname):

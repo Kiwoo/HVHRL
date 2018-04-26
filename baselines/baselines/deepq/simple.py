@@ -21,10 +21,10 @@ class ActWrapper(object):
         self._act_params = act_params
 
     @staticmethod
-    def load(path):
+    def load(path, exp_name):
         with open(path, "rb") as f:
             model_data, act_params = cloudpickle.load(f)
-        act = deepq.build_act(**act_params)
+        act = deepq.build_act(**act_params, scope=exp_name)
         sess = tf.Session()
         sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
@@ -60,7 +60,7 @@ class ActWrapper(object):
             cloudpickle.dump((model_data, self._act_params), f)
 
 
-def load(path):
+def load(path, exp_name):
     """Load act function that was returned by learn function.
 
     Parameters
@@ -74,7 +74,7 @@ def load(path):
         function that takes a batch of observations
         and returns actions.
     """
-    return ActWrapper.load(path)
+    return ActWrapper.load(path, exp_name)
 
 
 def learn(env,
@@ -97,6 +97,7 @@ def learn(env,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
           param_noise=False,
+          exp_name=None,
           callback=None):
     """Train a deepq model.
 
@@ -183,6 +184,7 @@ def learn(env,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
         grad_norm_clipping=10,
+        scope=exp_name,
         param_noise=param_noise
     )
 

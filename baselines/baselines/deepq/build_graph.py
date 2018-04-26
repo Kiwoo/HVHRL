@@ -173,6 +173,8 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         function to select and action given observation.
 `       See the top of the file for details.
     """
+
+    print("scope: {}".format(scope))
     with tf.variable_scope(scope, reuse=reuse):
         observations_ph = make_obs_ph("observation")
         stochastic_ph = tf.placeholder(tf.bool, (), name="stochastic")
